@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>jakarta-portable</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Jakarta Portable</name>
+    <description>One body of Jakarta EE 10 business code that runs unchanged on Quarkus, Open Liberty, WildFly, Payara Server, Payara Micro and GlassFish, built on per-specification APIs rather than the Jakarta EE umbrella.</description>
+
+    <modules>
+        <module>api</module>
+        <module>app</module>
+        <module>runtimes</module>
+        <module>conformance</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.parameters>true</maven.compiler.parameters>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- The shared API set (per-specification APIs; the jakartaee-api umbrella is not used) -->
+        <jakarta.ws.rs-api.version>3.1.0</jakarta.ws.rs-api.version>
+        <jakarta.cdi-api.version>4.0.1</jakarta.cdi-api.version>
+        <jakarta.inject-api.version>2.0.1</jakarta.inject-api.version>
+        <jakarta.interceptor-api.version>2.1.0</jakarta.interceptor-api.version>
+        <jakarta.annotation-api.version>2.1.1</jakarta.annotation-api.version>
+        <jakarta.persistence-api.version>3.1.0</jakarta.persistence-api.version>
+        <jakarta.transaction-api.version>2.0.1</jakarta.transaction-api.version>
+        <jakarta.validation-api.version>3.0.2</jakarta.validation-api.version>
+        <jakarta.json.bind-api.version>3.0.1</jakarta.json.bind-api.version>
+        <jakarta.json-api.version>2.1.3</jakarta.json-api.version>
+        <jakarta.batch-api.version>2.1.1</jakarta.batch-api.version>
+        <jakarta.security.enterprise-api.version>3.0.0</jakarta.security.enterprise-api.version>
+        <!-- Quarkus only: the Jakarta Security reference implementation's password hash. -->
+        <soteria.version>3.0.4</soteria.version>
+
+        <quarkus.platform.version>3.40.1.1</quarkus.platform.version>
+        <jberet.version>2.11.0</jberet.version>
+
+        <!-- What the runtime images are assembled from (runtimes/*/pom.xml). The base images of
+             Payara Server and GlassFish are named in their Dockerfiles. -->
+        <postgresql.version>42.7.14</postgresql.version>
+        <openliberty.version>26.0.0.10</openliberty.version>
+        <wildfly.version>42.0.0.Final</wildfly.version>
+        <payara.version>7.2026.10</payara.version>
+
+        <!-- jackson-annotations has no patch level since 2.20; databind keeps one. -->
+        <jackson-annotations.version>2.22</jackson-annotations.version>
+        <jackson-databind.version>2.22.4</jackson-databind.version>
+        <!-- Test only: the JSON-P provider for the unit tests (the servers ship their own). -->
+        <parsson.version>1.1.9</parsson.version>
+        <junit.version>6.1.3</junit.version>
+        <rest-assured.version>6.3.0</rest-assured.version>
+        <maven.compiler.plugin.version>3.16.0</maven.compiler.plugin.version>
+        <maven.surefire.plugin.version>3.6.1</maven.surefire.plugin.version>
+        <maven.war.plugin.version>3.5.1</maven.war.plugin.version>
+        <maven.enforcer.plugin.version>3.7.0</maven.enforcer.plugin.version>
+        <openapi-generator.plugin.version>7.26.0</openapi-generator.plugin.version>
+        <jandex.plugin.version>3.6.0</jandex.plugin.version>
+        <build-helper.plugin.version>3.6.2</build-helper.plugin.version>
+        <maven.resources.plugin.version>3.5.0</maven.resources.plugin.version>
+        <maven.dependency.plugin.version>3.11.0</maven.dependency.plugin.version>
+        <liberty.plugin.version>3.12.4</liberty.plugin.version>
+        <wildfly.plugin.version>6.2.0.Final</wildfly.plugin.version>
+
+        <!-- Formatting: one formatter for every module, enforced by `mvn verify`. -->
+        <spotless.plugin.version>3.10.4</spotless.plugin.version>
+        <palantir-java-format.version>2.103.0</palantir-java-format.version>
+
+        <!-- Schema generation, substituted into persistence.xml (and Quarkus's config) at build
+             time. Both default to "none", so a deployed artifact never touches an existing
+             schema; -Pdev-schema switches them to drop-and-create for the sample data. -->
+        <ddl.action>none</ddl.action>
+        <ddl.eclipse-link.action>none</ddl.eclipse-link.action>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>jakarta.ws.rs</groupId>
+                <artifactId>jakarta.ws.rs-api</artifactId>
+                <version>${jakarta.ws.rs-api.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.enterprise</groupId>
+                <artifactId>jakarta.enterprise.cdi-api</artifactId>
+                <version>${jakarta.cdi-api.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.inject</groupId>
+                <artifactId>jakarta.inject-api</artifactId>
+                <version>${jakarta.inject-api.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.interceptor</groupId>
+                <artifactId>jakarta.interceptor-api</artifactId>
+                <version>${jakarta.interceptor-api.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.annotation</groupId>
+                <artifactId>jakarta.annotation-api</artifactId>
+                <version>${jakarta.annotation-api.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.persistence</groupId>
+                <artifactId>jakarta.persistence-api</artifactId>
+                <version>${jakarta.persistence-api.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.transaction</groupId>
+                <artifactId>jakarta.transaction-api</artifactId>
+                <version>${jakarta.transaction-api.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.validation</groupId>
+                <artifactId>jakarta.validation-api</artifactId>
+                <version>${jakarta.validation-api.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.json.bind</groupId>
+                <artifactId>jakarta.json.bind-api</artifactId>
+                <version>${jakarta.json.bind-api.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.json</groupId>
+                <artifactId>jakarta.json-api</artifactId>
+                <version>${jakarta.json-api.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.batch</groupId>
+                <artifactId>jakarta.batch-api</artifactId>
+                <version>${jakarta.batch-api.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.security.enterprise</groupId>
+                <artifactId>jakarta.security.enterprise-api</artifactId>
+                <version>${jakarta.security.enterprise-api.version}</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>com.example</groupId>
+                <artifactId>api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.parsson</groupId>
+                <artifactId>parsson</artifactId>
+                <version>${parsson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-annotations</artifactId>
+                <version>${jackson-annotations.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson-databind.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.rest-assured</groupId>
+                <artifactId>rest-assured</artifactId>
+                <version>${rest-assured.version}</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${maven.compiler.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven.surefire.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-war-plugin</artifactId>
+                    <version>${maven.war.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>${maven.enforcer.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>${maven.resources.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <version>${maven.dependency.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>io.openliberty.tools</groupId>
+                    <artifactId>liberty-maven-plugin</artifactId>
+                    <version>${liberty.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.wildfly.plugins</groupId>
+                    <artifactId>wildfly-maven-plugin</artifactId>
+                    <version>${wildfly.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.openapitools</groupId>
+                    <artifactId>openapi-generator-maven-plugin</artifactId>
+                    <version>${openapi-generator.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>io.smallrye</groupId>
+                    <artifactId>jandex-maven-plugin</artifactId>
+                    <version>${jandex.plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>build-helper-maven-plugin</artifactId>
+                    <version>${build-helper.plugin.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+        <plugins>
+            <!--
+                Formatting is part of the build, not a matter of taste: `mvn spotless:apply`
+                rewrites the sources, and every build checks them (`mvn spotless:check`, bound to
+                validate below). Palantir's formatter keeps the 4-space indent and 120-column
+                layout this code base already uses, so the diff stays close to the hand-written
+                style (Google's AOSP style would re-wrap every file at 100 columns).
+            -->
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${spotless.plugin.version}</version>
+                <configuration>
+                    <encoding>UTF-8</encoding>
+                    <java>
+                        <includes>
+                            <include>src/main/java/**/*.java</include>
+                            <include>src/test/java/**/*.java</include>
+                        </includes>
+                        <palantirJavaFormat>
+                            <version>${palantir-java-format.version}</version>
+                        </palantirJavaFormat>
+                        <removeUnusedImports/>
+                        <trimTrailingWhitespace/>
+                        <endWithNewline/>
+                    </java>
+                    <!-- The POMs go through the same apply/check as the Java sources. sortPom
+                         puts the elements in Maven's recommended order and gives every
+                         dependency its own lines; dependencies and plugins keep the order they
+                         are written in (it carries meaning: API first, then implementations). -->
+                    <pom>
+                        <includes>
+                            <include>pom.xml</include>
+                        </includes>
+                        <sortPom>
+                            <encoding>UTF-8</encoding>
+                            <nrOfIndentSpace>4</nrOfIndentSpace>
+                            <keepBlankLines>true</keepBlankLines>
+                            <expandEmptyElements>false</expandEmptyElements>
+                            <spaceBeforeCloseEmptyElement>false</spaceBeforeCloseEmptyElement>
+                            <predefinedSortOrder>recommended_2008_06</predefinedSortOrder>
+                        </sortPom>
+                    </pom>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>format-check</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <phase>validate</phase>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!--
+            Development, demo and CI builds: drop and recreate the schema on every start, so
+            the sample data is seeded into empty tables. Everything in the schema is lost, so
+            never use this profile for a real deployment.
+
+                mvn -Pdev-schema package -DskipTests
+
+            The profile is declared here so the WAR and the Quarkus build always agree.
+        -->
+        <profile>
+            <id>dev-schema</id>
+            <properties>
+                <ddl.action>drop-and-create</ddl.action>
+                <ddl.eclipse-link.action>drop-and-create-tables</ddl.eclipse-link.action>
+            </properties>
+        </profile>
+    </profiles>
+</project>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.example</groupId>
+        <artifactId>jakarta-portable</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>runtimes</artifactId>
+    <packaging>pom</packaging>
+    <name>Runtimes</name>
+    <description>One module per runtime. Each one stages what its Dockerfile copies (see runtimes/README.md).</description>
+
+    <modules>
+        <module>quarkus</module>
+        <module>liberty</module>
+        <module>wildfly</module>
+        <module>payara-micro</module>
+        <module>payara</module>
+        <module>glassfish</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.example</groupId>
+                <artifactId>app</artifactId>
+                <version>${project.version}</version>
+                <type>war</type>
+            </dependency>
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${postgresql.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <!-- A module that declares this plugin gets its direct dependencies (the WAR, the
+                     JDBC driver, ...) copied to target/image without versions, which is where its
+                     Dockerfile takes them from. -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <id>stage-image</id>
+                            <goals>
+                                <goal>copy-dependencies</goal>
+                            </goals>
+                            <phase>package</phase>
+                            <configuration>
+                                <outputDirectory>${project.build.directory}/image</outputDirectory>
+                                <excludeTransitive>true</excludeTransitive>
+                                <stripVersion>true</stripVersion>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

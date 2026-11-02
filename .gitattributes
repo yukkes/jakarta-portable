@@ -1,0 +1,13 @@
+# Normalize line endings: text files are stored with LF and checked out natively.
+* text=auto
+
+# Scripts and the Makefile must keep LF, even on a Windows checkout.
+*.sh text eol=lf
+Makefile text eol=lf
+*.asadmin text eol=lf
+*.cli text eol=lf
+
+# Binary files are never converted.
+*.png binary
+*.gif binary
+*.jar binary

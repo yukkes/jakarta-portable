@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <!-- Same policy as the Content-Security-Policy header (SecurityHeaders), minus frame-ancestors,
+         which a <meta> policy ignores (frame-guard.js covers it). It protects the pages on Payara
+         and GlassFish, which send no headers with static files; SecurityHeadersTest keeps the two
+         in step. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'">
+    <meta name="referrer" content="no-referrer">
+    <script src="frame-guard.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="Jakarta EE 10 order management sample with JAX-RS, CDI, JPA, Bean Validation, Jakarta Batch, and portable authentication.">
+    <meta name="theme-color" content="#0369a1">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Order Sample - Jakarta EE 10</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="app-bar">
+    <div class="app-bar-inner">
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true">
+                <!-- Font Awesome Free 6.7.2 - file-circle-check (CC BY 4.0) https://fontawesome.com -->
+                <svg viewBox="0 0 576 512" focusable="false">
+                    <path fill="currentColor" d="M0 64C0 28.7 28.7 0 64 0L224 0l0 128c0 17.7 14.3 32 32 32l128 0 0 38.6C310.1 219.5 256 287.4 256 368c0 59.1 29.1 111.3 73.7 143.3c-3.2 .5-6.4 .7-9.7 .7L64 512c-35.3 0-64-28.7-64-64L0 64zm384 64l-128 0L256 0 384 128zM288 368a144 144 0 1 1 288 0 144 144 0 1 1 -288 0zm211.3-43.3c-6.2-6.2-16.4-6.2-22.6 0L416 385.4l-28.7-28.7c-6.2-6.2-16.4-6.2-22.6 0s-6.2 16.4 0 22.6l40 40c6.2 6.2 16.4 6.2 22.6 0l72-72c6.2-6.2 6.2-16.4 0-22.6z"/>
+                </svg>
+            </span>
+            <div class="brand-text">
+                <h1>Order Sample</h1>
+                <p>Jakarta EE 10</p>
+            </div>
+        </div>
+        <div class="session" aria-label="Signed-in user">
+            <span class="avatar" id="user-avatar" aria-hidden="true">?</span>
+            <div class="session-text">
+                <span class="session-name" id="current-user"></span>
+                <span class="session-role" id="current-role"></span>
+            </div>
+            <button class="secondary small" type="button" data-action="logout">Log out</button>
+        </div>
+    </div>
+</header>
+
+<nav class="tabs" aria-label="Main navigation" role="tablist">
+    <div class="tabs-inner">
+        <button class="active" id="tab-orders-button" data-tab="orders" role="tab"
+                aria-selected="true" aria-current="page" aria-controls="tab-orders">Orders</button>
+        <button id="tab-products-button" data-tab="products" role="tab"
+                aria-selected="false" aria-controls="tab-products">Products</button>
+        <button id="tab-invoices-button" data-tab="invoices" role="tab"
+                aria-selected="false" aria-controls="tab-invoices">Invoices</button>
+        <button id="tab-batch-button" data-tab="batch" role="tab"
+                aria-selected="false" aria-controls="tab-batch">Batch</button>
+    </div>
+</nav>
+
+<main id="main" tabindex="-1">
+    <section class="tab-panel" id="tab-orders" role="tabpanel" aria-labelledby="tab-orders-button" aria-hidden="false">
+        <div class="split">
+            <form class="panel" id="order-form">
+                <div class="panel-head">
+                    <div>
+                        <h2>New order</h2>
+                        <p class="hint">Confirming an order reserves its stock.</p>
+                    </div>
+                </div>
+                <div class="fields-2">
+                    <div class="field">
+                        <label for="customer">Customer</label>
+                        <select id="customer" required></select>
+                    </div>
+                    <div class="field">
+                        <label for="order-date">Order date</label>
+                        <input type="date" id="order-date">
+                    </div>
+                </div>
+                <div class="lines-head">
+                    <h3>Lines</h3>
+                    <button type="button" class="ghost small" id="add-line">Add line</button>
+                </div>
+                <div id="lines"></div>
+                <button type="submit" class="block">Create order</button>
+            </form>
+
+            <section class="panel" aria-labelledby="orders-list-title">
+                <div class="panel-head">
+                    <h2 id="orders-list-title">Orders</h2>
+                    <div class="toolbar">
+                        <div class="field tool">
+                            <label for="orders-status">Status</label>
+                            <select id="orders-status" data-filter="orders.status">
+                                <option value="">All</option>
+                                <option value="DRAFT">DRAFT</option>
+                                <option value="CONFIRMED">CONFIRMED</option>
+                                <option value="INVOICED">INVOICED</option>
+                                <option value="CANCELLED">CANCELLED</option>
+                            </select>
+                        </div>
+                        <div class="field tool">
+                            <label for="orders-sort">Sort</label>
+                            <select id="orders-sort" data-filter="orders.sort">
+                                <option value="id,desc">ID, newest first</option>
+                                <option value="id,asc">ID, oldest first</option>
+                                <option value="orderDate,desc">Order date, newest first</option>
+                                <option value="orderDate,asc">Order date, oldest first</option>
+                                <option value="status,asc">Status, A-Z</option>
+                                <option value="totalAmount,desc">Amount, highest first</option>
+                            </select>
+                        </div>
+                        <div class="field tool">
+                            <label for="orders-size">Per page</label>
+                            <select id="orders-size" data-filter="orders.size">
+                                <option value="2">2</option>
+                                <option value="5">5</option>
+                                <option value="10" selected>10</option>
+                                <option value="20">20</option>
+                            </select>
+                        </div>
+                        <button type="button" class="ghost small" data-action="reload-orders">Reload</button>
+                    </div>
+                </div>
+                <div id="orders-body"></div>
+            </section>
+        </div>
+    </section>
+
+    <section class="tab-panel hidden" id="tab-products" role="tabpanel" aria-labelledby="tab-products-button" aria-hidden="true">
+        <section class="panel">
+            <div class="panel-head">
+                <h2 id="products-list-title">Products</h2>
+                <div class="toolbar">
+                    <div class="field tool">
+                        <label for="products-sort">Sort</label>
+                        <select id="products-sort" data-filter="products.sort">
+                            <option value="code,asc">Code, A-Z</option>
+                            <option value="code,desc">Code, Z-A</option>
+                            <option value="name,asc">Name, A-Z</option>
+                            <option value="unitPrice,desc">Unit price, highest first</option>
+                            <option value="stock,desc">Stock, highest first</option>
+                            <option value="stock,asc">Stock, lowest first</option>
+                        </select>
+                    </div>
+                    <div class="field tool">
+                        <label for="products-size">Per page</label>
+                        <select id="products-size" data-filter="products.size">
+                            <option value="2">2</option>
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                        </select>
+                    </div>
+                    <button type="button" class="ghost small" data-action="reload-products">Reload</button>
+                </div>
+            </div>
+            <div id="products-body"></div>
+        </section>
+    </section>
+
+    <section class="tab-panel hidden" id="tab-invoices" role="tabpanel" aria-labelledby="tab-invoices-button" aria-hidden="true">
+        <section class="panel">
+            <div class="panel-head">
+                <h2 id="invoices-list-title">Invoices</h2>
+                <div class="toolbar">
+                    <div class="field tool">
+                        <label for="invoice-month">Billing month</label>
+                        <input type="month" id="invoice-month">
+                    </div>
+                    <div class="field tool">
+                        <label for="invoices-sort">Sort</label>
+                        <select id="invoices-sort" data-filter="invoices.sort">
+                            <option value="id,desc">ID, newest first</option>
+                            <option value="id,asc">ID, oldest first</option>
+                            <option value="invoiceNo,asc">Invoice no., A-Z</option>
+                            <option value="billingMonth,desc">Billing month, newest first</option>
+                            <option value="totalAmount,desc">Amount (excl. tax), highest first</option>
+                            <option value="createdAt,desc">Created, newest first</option>
+                        </select>
+                    </div>
+                    <div class="field tool">
+                        <label for="invoices-size">Per page</label>
+                        <select id="invoices-size" data-filter="invoices.size">
+                            <option value="2">2</option>
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                        </select>
+                    </div>
+                    <button type="button" class="ghost small" data-action="reload-invoices">Reload</button>
+                </div>
+            </div>
+            <div id="invoices-body"></div>
+        </section>
+    </section>
+
+    <section class="tab-panel hidden" id="tab-batch" role="tabpanel" aria-labelledby="tab-batch-button" aria-hidden="true">
+        <div class="jobs">
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Generate invoices</h2>
+                        <p class="hint">Creates invoices from the CONFIRMED orders of the billing month.</p>
+                    </div>
+                </div>
+                <div class="fields-inline">
+                    <div class="field">
+                        <label for="batch-month">Billing month</label>
+                        <input type="month" id="batch-month">
+                    </div>
+                    <button type="button" data-action="start-invoice-job">Run</button>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Import CSV</h2>
+                        <p class="hint">Leave the file name empty to import the sample CSV.</p>
+                    </div>
+                </div>
+                <div class="fields-inline">
+                    <div class="field">
+                        <label for="import-file">File name (optional)</label>
+                        <input type="text" id="import-file" placeholder=" " autocomplete="off">
+                    </div>
+                    <button type="button" data-action="start-import-job">Run</button>
+                </div>
+            </section>
+        </div>
+
+        <section class="panel" id="execution-panel" aria-labelledby="execution-title" hidden>
+            <div class="panel-head">
+                <h2 id="execution-title">Execution status</h2>
+            </div>
+            <div id="exec-box" class="exec-box"></div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <h2 id="executions-list-title">Recent executions</h2>
+                <button type="button" class="ghost small" data-action="reload-executions">Reload</button>
+            </div>
+            <div id="executions-body"></div>
+        </section>
+    </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

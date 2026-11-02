@@ -1,0 +1,99 @@
+# The database and one service per runtime. A runtime's service name is also its profile, so
+# `docker compose --profile liberty up` starts PostgreSQL and Open Liberty only.
+# scripts/portable drives this file; runtimes/README.md describes the contract.
+name: jakarta-portable
+
+# The same environment and port for every runtime. Each runtime's config reads DB_* from the
+# container environment; APP_* are the application settings (docs/development.md).
+x-runtime: &runtime
+  environment:
+    DB_HOST: ${DB_HOST:-postgres}
+    DB_PORT: ${DB_PORT:-5432}
+    DB_NAME: ${DB_NAME:-orders}
+    DB_USER: ${DB_USER:-orders}
+    DB_PASSWORD: ${DB_PASSWORD:-orders}
+    APP_DEMO_USERS: ${APP_DEMO_USERS:-false}
+  ports:
+    - "${PORT:-8080}:8080"
+  # Lets DB_HOST=host.docker.internal reach a database on the host (Linux included).
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  # With another database (DB_HOST set), start the runtime with --no-deps.
+  depends_on:
+    postgres:
+      condition: service_healthy
+  # /api/health answers 200 once the application is deployed and reaches the database. Probed
+  # every second while starting (up to 120 s), then every 10 s. Plain bash (/dev/tcp), which every
+  # image has, so no HTTP client needs installing. 127.0.0.1, not localhost: localhost can
+  # resolve to ::1, where Payara Micro does not listen.
+  healthcheck:
+    test:
+      - CMD
+      - bash
+      - -c
+      - exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /api/health HTTP/1.0\r\n\r\n' >&3 && head -n 1 <&3 | grep -q ' 200 '
+    start_period: 120s
+    start_interval: 1s
+    interval: 10s
+    timeout: 3s
+    retries: 3
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-orders}
+      POSTGRES_USER: ${DB_USER:-orders}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-orders}
+    # Published for tools on the host (Quarkus dev mode, psql); the runtimes use the network.
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # label portable.mp-health: the runtime's MicroProfile Health path, or "" when it has none
+  # (the conformance suite then skips that scenario).
+  quarkus:
+    <<: *runtime
+    profiles: [quarkus]
+    build: runtimes/quarkus
+    labels:
+      portable.mp-health: /q/health
+
+  liberty:
+    <<: *runtime
+    profiles: [liberty]
+    build: runtimes/liberty
+    labels:
+      portable.mp-health: /health
+
+  wildfly:
+    <<: *runtime
+    profiles: [wildfly]
+    build: runtimes/wildfly
+    labels:
+      portable.mp-health: ""
+
+  payara-micro:
+    <<: *runtime
+    profiles: [payara-micro]
+    build: runtimes/payara-micro
+    labels:
+      portable.mp-health: /health
+
+  payara:
+    <<: *runtime
+    profiles: [payara]
+    build: runtimes/payara
+    labels:
+      portable.mp-health: /health
+
+  glassfish:
+    <<: *runtime
+    profiles: [glassfish]
+    build: runtimes/glassfish
+    labels:
+      portable.mp-health: ""

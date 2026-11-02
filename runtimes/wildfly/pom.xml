@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.example</groupId>
+        <artifactId>runtimes</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>runtime-wildfly</artifactId>
+    <packaging>pom</packaging>
+    <name>Runtime: WildFly</name>
+    <description>A Galleon-provisioned WildFly with only the layers the application needs, in target/server.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>app</artifactId>
+            <type>war</type>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+            </plugin>
+            <!-- The full distribution is over 1.3 GB; the layers below keep the image comparable
+                 in size with the other runtimes. -->
+            <plugin>
+                <groupId>org.wildfly.plugins</groupId>
+                <artifactId>wildfly-maven-plugin</artifactId>
+                <configuration>
+                    <feature-packs>
+                        <feature-pack>
+                            <location>org.wildfly:wildfly-galleon-pack:${wildfly.version}</location>
+                        </feature-pack>
+                        <feature-pack>
+                            <location>org.wildfly:wildfly-ee-galleon-pack:${wildfly.version}</location>
+                        </feature-pack>
+                    </feature-packs>
+                    <layers>
+                        <layer>jaxrs</layer>
+                        <layer>cdi</layer>
+                        <layer>jpa</layer>
+                        <layer>datasources</layer>
+                        <layer>transactions</layer>
+                        <layer>ee-concurrency</layer>
+                        <layer>batch-jberet</layer>
+                        <layer>bean-validation</layer>
+                        <layer>jsonb</layer>
+                        <layer>ee</layer>
+                        <!-- Jakarta Security (IdentityStoreHandler, Pbkdf2PasswordHash and the
+                             database identity store the application declares). -->
+                        <layer>ee-security</layer>
+                        <layer>management</layer>
+                        <layer>core-tools</layer>
+                        <layer>deployment-scanner</layer>
+                    </layers>
+                    <provisioningDir>server</provisioningDir>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>provision</id>
+                        <goals>
+                            <goal>provision</goal>
+                        </goals>
+                        <phase>package</phase>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

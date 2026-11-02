@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<persistence xmlns="https://jakarta.ee/xml/ns/persistence"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="https://jakarta.ee/xml/ns/persistence https://jakarta.ee/xml/ns/persistence/persistence_3_0.xsd"
+             version="3.0">
+
+    <persistence-unit name="orderPU" transaction-type="JTA">
+        <description>Order sample persistence unit</description>
+
+        <class>com.example.app.domain.Customer</class>
+        <class>com.example.app.domain.Product</class>
+        <class>com.example.app.domain.Order</class>
+        <class>com.example.app.domain.OrderLine</class>
+        <class>com.example.app.domain.Invoice</class>
+        <class>com.example.app.domain.User</class>
+        <class>com.example.app.domain.AuthToken</class>
+        <class>com.example.app.domain.OrderImportLog</class>
+
+        <properties>
+            <!-- Schema management is a build-time decision, not a runtime one: both properties
+                 are substituted by Maven from the root POM (${ddl.action} /
+                 ${ddl.eclipse-link.action}). The default is "none", so a deployed artifact
+                 never touches an existing schema; the dev profile
+                 (mvn -Pdev-schema) drops and recreates it for the sample data.
+                 Nothing can override these after the build: Quarkus does not apply its
+                 schema-generation configuration to a persistence.xml unit, and WildFly /
+                 Payara / Liberty offer no equivalent override for a persistence-unit property.
+                 For a real deployment, keep "none" (or "validate") and let Flyway / Liquibase
+                 own the DDL. -->
+            <property name="jakarta.persistence.schema-generation.database.action" value="${ddl.action}"/>
+            <!-- Hibernate (Quarkus) builds its metadata at static init, before a JDBC connection
+                 exists, so it cannot detect the dialect from JDBC metadata. Keep it explicit;
+                 Hibernate 6's auto-detection only works when a URL is configured. -->
+            <property name="hibernate.dialect" value="org.hibernate.dialect.PostgreSQLDialect"/>
+            <!-- EclipseLink (Open Liberty / Payara) creates the schema at EMF creation, before
+                 @Startup beans such as the data seeder run, and reads its own property name
+                 rather than the standard one. -->
+            <property name="eclipselink.ddl-generation" value="${ddl.eclipse-link.action}"/>
+            <property name="eclipselink.ddl-generation.output-mode" value="database"/>
+            <!-- EclipseLink's shared (L2) cache serialises lookups under concurrency and
+                 was the main cost of the product list on Open Liberty. This sample reads
+                 small tables from PostgreSQL, so the DB is faster than the cache. -->
+            <property name="eclipselink.cache.shared.default" value="false"/>
+        </properties>
+    </persistence-unit>
+</persistence>

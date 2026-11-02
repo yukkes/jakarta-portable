@@ -1,0 +1,8 @@
+# Sample order import (customer code,product code,quantity[,order date])
+# Blank lines and lines starting with # are ignored. Quotes are not supported.
+# Importing the same file again never creates a second order from the same line.
+# Identical lines become separate orders (the two C001,P002,2 lines below are 2 orders).
+C001,P002,2
+C002,P004,10
+C003,P001,1,2020-01-15
+C001,P002,2

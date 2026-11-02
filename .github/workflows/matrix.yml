@@ -1,0 +1,32 @@
+name: matrix
+
+# The portability claim is only worth what it is checked against: the same suite on every
+# runtime. Not on every pull request (build.yml covers Quarkus); nightly and on demand.
+on:
+  schedule:
+    - cron: '0 18 * * *'   # 03:00 JST
+  workflow_dispatch:
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build, start, verify and stop every runtime
+        run: make matrix
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: matrix-logs
+          path: target/portable/
+          retention-days: 7

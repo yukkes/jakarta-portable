@@ -1,0 +1,41 @@
+name: build
+
+# Fast feedback: static checks, unit tests, and the conformance suite against Quarkus.
+# Every runtime runs in matrix.yml (nightly / on demand).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Lint and unit tests
+        run: make lint test
+
+      - name: Build Quarkus
+        run: bash scripts/portable build --dev quarkus
+
+      - name: Start Quarkus
+        run: bash scripts/portable up quarkus
+
+      - name: Conformance
+        run: bash scripts/portable verify quarkus
+
+      - name: Logs
+        if: failure()
+        run: docker compose --profile '*' logs
+
+      - name: Stop
+        if: always()
+        run: bash scripts/portable down

@@ -1,0 +1,5 @@
+# EclipseLink tuning measured in docs/performance.md: the shared L2 cache serialises
+# reads on its identity-map locks (same finding as Payara), and EclipseLink's own
+# statement cache is off by default.
+-Declipselink.cache.shared.default=false
+-Declipselink.jdbc.cache-statements=true

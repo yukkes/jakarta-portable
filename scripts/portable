@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+#
+# Builds, starts and verifies the runtimes. Every runtime is a service in compose.yaml (its
+# name is also its profile); nothing about a particular runtime is written here.
+#
+#   bash scripts/portable build [--dev] [runtime] mvn package: the WAR and every runtime's image inputs (or one's)
+#   bash scripts/portable up <runtime>            build its image, start it with PostgreSQL, wait until ready
+#   bash scripts/portable verify <runtime>        run the conformance suite against the running runtime
+#   bash scripts/portable logs <runtime>          follow its log
+#   bash scripts/portable down                    stop and remove every container (the database included)
+#   bash scripts/portable matrix                  build --dev, then up + verify + down for every runtime
+#   bash scripts/portable bench [runtime...]      throughput table in Markdown (needs wrk)
+#   bash scripts/portable list                    the runtimes
+#   bash scripts/portable lint                    checks that need no build (ASCII, file modes, compose, shell)
+#
+# --dev builds with -Pdev-schema: the schema is dropped and recreated, and the sample data seeded,
+# on every start. Without it the schema is left alone (schema-generation "none").
+#
+# Environment (see compose.yaml): PORT (8080), POSTGRES_PORT (5432), DB_HOST/DB_PORT/DB_NAME/
+# DB_USER/DB_PASSWORD (the compose database), APP_DEMO_USERS (true here: up is for local runs),
+# READY_TIMEOUT (120 s for /api/health to answer 200).
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$ROOT"
+
+PORT="${PORT:-8080}"
+BASE_URL="http://localhost:$PORT"
+export PORT APP_DEMO_USERS="${APP_DEMO_USERS:-true}"
+RUN_DIR="$ROOT/target/portable"
+READY_TIMEOUT="${READY_TIMEOUT:-120}"
+
+log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+note() { printf '  %s\n' "$*"; }
+die() { printf '[error] %s\n' "$*" >&2; exit 1; }
+
+compose() { docker compose --progress quiet --profile '*' "$@"; }
+
+runtimes() { compose config --services | grep -vx postgres; }
+
+require_runtime() {
+    runtimes | grep -qx "${1:-}" || die "unknown runtime '${1:-}' (one of: $(runtimes | tr '\n' ' '))"
+}
+
+container() { compose ps -q "$1"; }
+
+# A label of the runtime's service in compose.yaml (portable.*), read from its container.
+label() {
+    local id
+    id=$(container "$1")
+    if [ -z "$id" ]; then
+        printf '[error] %s is not running (bash scripts/portable up %s)\n' "$1" "$1" >&2
+        return 1
+    fi
+    docker inspect -f "{{index .Config.Labels \"$2\"}}" "$id"
+}
+
+# ---------------------------------------------------------------- build
+
+build() {
+    local args=(-B -q package -DskipTests)
+    [ "$1" = "dev" ] && args+=(-Pdev-schema)
+    if [ -n "${2:-}" ]; then
+        require_runtime "$2"
+        args+=(-pl "runtimes/$2" -am)
+    fi
+    log "mvn ${args[*]}"
+    mvn "${args[@]}"
+}
+
+# ---------------------------------------------------------------- up / down
+
+# up and verify run inside `if` and `&&` (matrix), where bash ignores `set -e`: every step that
+# can fail returns explicitly.
+
+up() {
+    local runtime=$1 began id
+    require_runtime "$runtime"
+    log "up $runtime"
+    compose build "$runtime" || return 1
+    # The database first (unless DB_HOST names another one), so that the time below is the
+    # runtime's start only.
+    if [ -z "${DB_HOST:-}" ]; then
+        compose up -d --wait postgres || return 1
+    fi
+    began=$(date +%s%N)
+    compose up -d --no-build --no-deps "$runtime" || return 1
+    id=$(container "$runtime")
+    # Polled from here every 0.1 s, not through the health check of compose.yaml: that one runs
+    # every second, so the time would be up to a second late. Same URL, same answer.
+    for _ in $(seq $((READY_TIMEOUT * 10))); do
+        if curl -sf -m 1 -o /dev/null "$BASE_URL/api/health"; then
+            note "ready: $BASE_URL in $(( ($(date +%s%N) - began) / 1000000 )) ms," \
+                "memory $(docker stats --no-stream --format '{{.MemUsage}}' "$id" | cut -d/ -f1)"
+            return 0
+        fi
+        if [ "$(docker inspect -f '{{.State.Running}}' "$id")" != "true" ]; then
+            note "$runtime exited during start; last log lines:"
+            compose logs --no-log-prefix --tail 30 "$runtime" | sed 's/^/    /'
+            return 1
+        fi
+        sleep 0.1
+    done
+    note "$runtime did not answer $BASE_URL/api/health within ${READY_TIMEOUT}s; last log lines:"
+    compose logs --no-log-prefix --tail 30 "$runtime" | sed 's/^/    /'
+    return 1
+}
+
+down() {
+    log "down"
+    compose down --remove-orphans
+}
+
+# ---------------------------------------------------------------- verify
+
+verify() {
+    local runtime=$1 health args report
+    require_runtime "$runtime"
+    health=$(label "$runtime" portable.mp-health) || return 1
+    args=(-Dapp.base.url="$BASE_URL")
+    [ -n "$health" ] && args+=(-Dapp.health.url="$BASE_URL$health")
+    mkdir -p "$RUN_DIR"
+    log "verify $runtime"
+    if mvn -B -q -pl conformance test "${args[@]}" > "$RUN_DIR/$runtime-conformance.log" 2>&1; then
+        report=$(find conformance/target/surefire-reports -name 'TEST-*.xml' | head -1)
+        note "PASS ($(sed -n 's/.*tests="\([0-9]*\)".*/\1/p' "$report" | head -1) tests)"
+        return 0
+    fi
+    note "FAIL, see target/portable/$runtime-conformance.log"
+    grep -E "Tests run:|<<<" "$RUN_DIR/$runtime-conformance.log" | head -20
+    return 1
+}
+
+# The conformance suite needs the seeded sample data, so the matrix always builds with --dev.
+matrix() {
+    local runtime results="" status=0
+    build dev
+    down
+    mkdir -p "$RUN_DIR"
+    for runtime in $(runtimes); do
+        if up "$runtime" && verify "$runtime"; then
+            results+="\n  PASS  $runtime"
+        else
+            results+="\n  FAIL  $runtime"
+            status=1
+        fi
+        compose logs --no-log-prefix "$runtime" > "$RUN_DIR/$runtime.log" 2>&1 || true
+        down
+    done
+    log "matrix"
+    printf '%b\n' "$results"
+    return "$status"
+}
+
+# ---------------------------------------------------------------- bench
+
+# The load goes to the container's address, not to the published port: through the port, every
+# request would pass docker-proxy, which costs more than some runtimes spend on a request.
+bench() {
+    local runtime out ip started ms memory all
+    command -v wrk >/dev/null || die "wrk is required"
+    if [ $# -eq 0 ]; then
+        mapfile -t all < <(runtimes)
+        set -- "${all[@]}"
+    fi
+    echo "| Runtime | Startup | Memory | \`/api/products\` (req/s) | p99 | \`/api/orders\` (req/s) | p99 |"
+    echo "|---|---:|---:|---:|---:|---:|---:|"
+    for runtime in "$@"; do
+        require_runtime "$runtime"
+        down >/dev/null 2>&1
+        if ! started=$(up "$runtime" 2>&1); then
+            printf '%s\n' "$started" >&2
+            echo "| $runtime | failed to start | | | | | |"
+            down >&2
+            continue
+        fi
+        printf '%s\n' "$started" >&2
+        # "ready: http://localhost:8080 in 8423 ms, memory 505.6MiB"
+        ms=$(sed -n 's/.* in \([0-9]*\) ms,.*/\1/p' <<<"$started")
+        memory=$(sed -n 's/.*memory \([0-9.]*[A-Za-z]*\).*/\1/p' <<<"$started")
+        compose exec -T postgres psql -q -v ON_ERROR_STOP=1 -U "${DB_USER:-orders}" -d "${DB_NAME:-orders}" \
+            -v products=200 -v customers=50 -v orders=200 < scripts/seed.sql >&2
+        ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$(container "$runtime")")
+        if out=$(bash scripts/bench.sh "http://$ip:8080" 2>&1); then
+            printf '%s\n' "$out" | grep '^env' >&2
+            printf '%s\n' "$out" | awk -v r="$runtime" -v ms="$ms" -v mem="$memory" '
+                /^products/ { p = $2; pp = $5 } /^orders/ { o = $2; op = $5 }
+                END { printf "| %s | %s ms | %s | %s | %s ms | %s | %s ms |\n", r, ms, mem, p, pp, o, op }'
+        else
+            echo "| $runtime | $ms ms | $memory | measurement failed | | | |"
+            printf '%s\n' "$out" >&2
+        fi
+        down >&2
+    done
+}
+
+# ---------------------------------------------------------------- lint
+
+lint() {
+    local status=0 files=() docs=()
+    log "lint"
+    # Printable ASCII, except README.ja.md and box-drawing characters (file trees) in Markdown.
+    # Binary files are skipped (-I); vendored files are not ours to change.
+    mapfile -t files < <(git ls-files --cached --others --exclude-standard | grep -vE '\.md$|/vendor/')
+    mapfile -t docs < <(git ls-files --cached --others --exclude-standard '*.md' | grep -vE '^README\.ja\.md$|/vendor/')
+    if grep -nIP '[^\x00-\x7F]' "${files[@]}"; then
+        status=1
+    fi
+    if grep -nIP '[^\x00-\x7F\x{2500}-\x{257F}]' "${docs[@]}"; then
+        status=1
+    fi
+    [ "$status" -eq 0 ] || note "non-ASCII characters (only README.ja.md and Markdown file trees may have them)"
+    # Scripts run through bash; an executable bit would show as a change in a Windows checkout.
+    if git ls-files -s | awk '$1 == "100755" { print "executable in git: " $4; found = 1 } END { exit !found }'; then
+        status=1
+    fi
+    compose config -q || status=1
+    for f in scripts/portable scripts/bench.sh runtimes/*/config/*.sh; do
+        bash -n "$f" || status=1
+        if command -v shellcheck >/dev/null; then shellcheck -x "$f" || status=1; fi
+    done
+    [ "$status" -eq 0 ] && note "ok"
+    return "$status"
+}
+
+# ---------------------------------------------------------------- main
+
+command=${1:-help}
+shift || true
+mode=prod
+[ "${1:-}" = "--dev" ] && { mode=dev; shift; }
+
+case $command in
+    build) build "$mode" "${1:-}" ;;
+    up) up "${1:?usage: up <runtime>}" ;;
+    verify) verify "${1:?usage: verify <runtime>}" ;;
+    logs) require_runtime "${1:-}"; compose logs -f "$1" ;;
+    down) down ;;
+    matrix) matrix ;;
+    bench) bench "$@" ;;
+    list) runtimes ;;
+    lint) lint ;;
+    help|-h|--help) sed -n '3,/^set -euo/{/^set -euo/d; s/^# \{0,1\}//; p}' "$0" ;;
+    *) die "unknown command '$command' (bash scripts/portable help)" ;;
+esac

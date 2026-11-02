@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /
+    schedule:
+      interval: monthly
+    ignore:
+      # The code is written against the Jakarta EE 10 API set (README); a newer API artifact would
+      # make it use APIs that EE 10 runtimes lack.
+      - dependency-name: 'jakarta.*'
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

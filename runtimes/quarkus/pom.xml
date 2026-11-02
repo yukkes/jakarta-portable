@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.example</groupId>
+        <artifactId>runtimes</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>runtime-quarkus</artifactId>
+    <name>Runtime: Quarkus (a second build of the app sources)</name>
+
+    <properties>
+        <!-- Hibernate ORM 7 in this Quarkus needs the Jakarta Persistence 3.2 API on the classpath; the code
+             itself uses nothing newer than 3.1. -->
+        <jakarta.persistence-api.version>3.2.0</jakarta.persistence-api.version>
+    </properties>
+
+    <!--
+        Quarkus is not a Jakarta EE 10 runtime: it implements a subset of the same
+        specifications. It therefore gets its own build (and its own classpath) while
+        compiling the *same* Java sources and resources as the WAR - no code is copied.
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.quarkus.platform</groupId>
+                <artifactId>quarkus-bom</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Jakarta Batch (JBeret) is an extension, not part of the Quarkus core BOM. -->
+            <dependency>
+                <groupId>io.quarkiverse.jberet</groupId>
+                <artifactId>quarkus-jberet-bom</artifactId>
+                <version>${jberet.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
+        <!-- Jakarta Security for Quarkus, which does not implement it: the API (the shared code
+             uses IdentityStoreHandler / Pbkdf2PasswordHash) and, from the reference
+             implementation, only the PBKDF2 class. Soteria's own dependencies (Servlet,
+             Jakarta Authentication, EJB, ...) are left out: Pbkdf2PasswordHashImpl needs none
+             of them, and its CDI extension is not run by ArC. -->
+        <dependency>
+            <groupId>jakarta.security.enterprise</groupId>
+            <artifactId>jakarta.security.enterprise-api</artifactId>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.glassfish.soteria</groupId>
+            <artifactId>jakarta.security.enterprise</artifactId>
+            <version>${soteria.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-jsonb</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-hibernate-orm</artifactId>
+        </dependency>
+        <!-- Jakarta Data repositories, generated at build time (Quarkus 3.40 supports it). -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-jdbc-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-narayana-jta</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-hibernate-validator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-smallrye-health</artifactId>
+        </dependency>
+        <!-- Jakarta Batch on Quarkus (EE servers ship their own implementation). -->
+        <dependency>
+            <groupId>io.quarkiverse.jberet</groupId>
+            <artifactId>quarkus-jberet</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!--
+            The shared resources include persistence.xml: the order sample relies on it for the
+            explicit Hibernate dialect, and Quarkus honours a persistence.xml when one is
+            present. It is Maven-filtered (like in the app module) so that the same
+            -Pdev-schema profile decides the schema-generation action for both build models;
+            application.properties follows the same property.
+        -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <excludes>
+                    <exclude>application.properties</exclude>
+                </excludes>
+            </resource>
+            <resource>
+                <filtering>true</filtering>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>application.properties</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>${project.basedir}/../../app/src/main/resources</directory>
+                <excludes>
+                    <exclude>META-INF/persistence.xml</exclude>
+                </excludes>
+            </resource>
+            <resource>
+                <filtering>true</filtering>
+                <directory>${project.basedir}/../../app/src/main/resources</directory>
+                <includes>
+                    <include>META-INF/persistence.xml</include>
+                </includes>
+            </resource>
+        </resources>
+        <plugins>
+            <!-- Same sources, second build model. -->
+            <!--
+                The UI lives in app/src/main/webapp so the WAR serves it at the context root
+                (Servlet containers do *not* serve WEB-INF/classes/META-INF/resources).
+                Quarkus serves static files from the classpath, so map the same directory
+                to META-INF/resources for this build - no file is copied or duplicated in git.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-webapp-for-quarkus</id>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <phase>process-resources</phase>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/META-INF/resources</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}/../../app/src/main/webapp</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>shared-sources</id>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <phase>generate-sources</phase>
+                        <configuration>
+                            <sources>
+                                <source>${project.basedir}/../../app/src/main/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>io.quarkus.platform</groupId>
+                <artifactId>quarkus-maven-plugin</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <extensions>true</extensions>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>build</goal>
+                            <goal>generate-code</goal>
+                            <goal>generate-code-tests</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

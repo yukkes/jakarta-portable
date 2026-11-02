@@ -1,0 +1,764 @@
+openapi: 3.0.3
+info:
+  title: Order Sample API
+  version: 1.0.0
+  description: Online order and Jakarta Batch sample API.
+servers:
+  - url: /api
+security:
+  - bearerAuth: []
+  - sessionCookie: []
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Bearer token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '429':
+          $ref: '#/components/responses/TooManyLogins'
+  /auth/session:
+    post:
+      tags: [Auth]
+      operationId: createSession
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Session cookie issued
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '429':
+          $ref: '#/components/responses/TooManyLogins'
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: currentUser
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/status:
+    get:
+      tags: [Auth]
+      operationId: authStatus
+      security: []
+      responses:
+        '200':
+          description: Authentication status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthStatusResponse'
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      responses:
+        '204':
+          description: Logged out
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /orders:
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [DRAFT, CONFIRMED, INVOICED, CANCELLED]
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderPageResponse'
+    post:
+      tags: [Orders]
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /orders/{id}:
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /orders/{id}/confirm:
+    post:
+      tags: [Orders]
+      operationId: confirmOrder
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /orders/{id}/cancel:
+    post:
+      tags: [Orders]
+      operationId: cancelOrder
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /products:
+    get:
+      tags: [Products]
+      operationId: listProducts
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductPageResponse'
+  /customers:
+    get:
+      tags: [Customers]
+      operationId: listCustomers
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerPageResponse'
+  /invoices:
+    get:
+      tags: [Invoices]
+      operationId: listInvoices
+      parameters:
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+            example: '2026-09'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoicePageResponse'
+  /invoices/{id}:
+    get:
+      tags: [Invoices]
+      operationId: getInvoice
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /batch/invoices:
+    post:
+      tags: [Batch]
+      operationId: startInvoiceJob
+      parameters:
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+            example: '2026-09'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchStartResponse'
+  /batch/imports:
+    post:
+      tags: [Batch]
+      operationId: startImportJob
+      parameters:
+        - name: inputFile
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchStartResponse'
+  /batch/executions:
+    get:
+      tags: [Batch]
+      operationId: listExecutions
+      parameters:
+        - name: job
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: count
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 10
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BatchExecutionResponse'
+  /batch/executions/{id}:
+    get:
+      tags: [Batch]
+      operationId: getExecution
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchExecutionResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /batch/executions/{id}/restart:
+    post:
+      tags: [Batch]
+      operationId: restartExecution
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchStartResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: APP_SESSION
+  # Every error has the same two shapes: the default JSON, or RFC 9457 when Accept asks for it.
+  responses:
+    BadRequest:
+      description: Validation or business rule error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    InvalidCredentials:
+      description: Invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Unauthorized:
+      description: Not authenticated
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Conflict:
+      description: Conflicts with the current state (order status, stock shortage, an execution that cannot be restarted)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    TooManyLogins:
+      description: Every login slot is busy (server-wide bound on concurrent password checks); retry later
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Zero-based page index.
+      schema:
+        type: integer
+        format: int32
+        default: 0
+        minimum: 0
+    Size:
+      name: size
+      in: query
+      required: false
+      description: Page size. Values above 100 are clamped to 100.
+      schema:
+        type: integer
+        format: int32
+        default: 20
+        minimum: 1
+        maximum: 100
+    Sort:
+      name: sort
+      in: query
+      required: false
+      description: Sort criteria in `field,asc|desc` form. Repeat the parameter for multiple fields.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+      example: ["status,asc", "id,desc"]
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 50
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+          format: password
+    UserResponse:
+      type: object
+      properties:
+        username:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+    AuthStatusResponse:
+      type: object
+      required: [authenticated]
+      properties:
+        authenticated:
+          type: boolean
+        username:
+          type: string
+          nullable: true
+        roles:
+          type: array
+          items:
+            type: string
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        refreshToken:
+          type: string
+          description: Rotated on every refresh; only the browser flow also stores it in the APP_REFRESH cookie.
+        expiresAt:
+          type: string
+          format: date-time
+          x-field-extra-annotation: >-
+            @jakarta.json.bind.annotation.JsonbDateFormat("yyyy-MM-dd'T'HH:mm:ss")
+            @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+        username:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+    CreateOrderLine:
+      type: object
+      required: [productCode, quantity]
+      properties:
+        productCode:
+          type: string
+          maxLength: 20
+        quantity:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 10000
+    CreateOrderRequest:
+      type: object
+      required: [customerCode, lines]
+      properties:
+        customerCode:
+          type: string
+          maxLength: 20
+        orderDate:
+          type: string
+          format: date
+          x-field-extra-annotation: >-
+            @jakarta.json.bind.annotation.JsonbDateFormat("yyyy-MM-dd")
+            @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/CreateOrderLine'
+    OrderLineResponse:
+      type: object
+      properties:
+        productCode:
+          type: string
+        productName:
+          type: string
+        quantity:
+          type: integer
+          format: int32
+        unitPrice:
+          type: number
+        lineAmount:
+          type: number
+    OrderResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        orderNo:
+          type: string
+        customerCode:
+          type: string
+        customerName:
+          type: string
+        orderDate:
+          type: string
+          format: date
+          x-field-extra-annotation: >-
+            @jakarta.json.bind.annotation.JsonbDateFormat("yyyy-MM-dd")
+            @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+        status:
+          type: string
+          enum: [DRAFT, CONFIRMED, INVOICED, CANCELLED]
+        totalAmount:
+          type: number
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderLineResponse'
+    ProductResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        unitPrice:
+          type: number
+        stock:
+          type: integer
+          format: int32
+    CustomerResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+    InvoiceResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        invoiceNo:
+          type: string
+        customerCode:
+          type: string
+        customerName:
+          type: string
+        orderNo:
+          type: string
+        billingMonth:
+          type: string
+        totalAmount:
+          type: number
+        taxAmount:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+          x-field-extra-annotation: >-
+            @jakarta.json.bind.annotation.JsonbDateFormat("yyyy-MM-dd'T'HH:mm:ss")
+            @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    BatchStartResponse:
+      type: object
+      properties:
+        executionId:
+          type: integer
+          format: int64
+        jobName:
+          type: string
+        status:
+          type: string
+    StepExecutionResponse:
+      type: object
+      properties:
+        stepName:
+          type: string
+        status:
+          type: string
+        exitStatus:
+          type: string
+        readCount:
+          type: integer
+          format: int64
+        writeCount:
+          type: integer
+          format: int64
+        commitCount:
+          type: integer
+          format: int64
+        rollbackCount:
+          type: integer
+          format: int64
+        skipCount:
+          type: integer
+          format: int64
+    BatchExecutionResponse:
+      type: object
+      properties:
+        executionId:
+          type: integer
+          format: int64
+        jobName:
+          type: string
+        status:
+          type: string
+        exitStatus:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+          x-field-extra-annotation: >-
+            @jakarta.json.bind.annotation.JsonbDateFormat("yyyy-MM-dd'T'HH:mm:ss")
+            @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+        endTime:
+          type: string
+          format: date-time
+          x-field-extra-annotation: >-
+            @jakarta.json.bind.annotation.JsonbDateFormat("yyyy-MM-dd'T'HH:mm:ss")
+            @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/StepExecutionResponse'
+    PageMetadata:
+      type: object
+      properties:
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int32
+        first:
+          type: boolean
+        last:
+          type: boolean
+        hasNext:
+          type: boolean
+        hasPrevious:
+          type: boolean
+    OrderPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/OrderResponse'
+    ProductPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProductResponse'
+    CustomerPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/CustomerResponse'
+    InvoicePageResponse:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          properties:
+            content:
+              type: array
+              items:
+                $ref: '#/components/schemas/InvoiceResponse'
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+          format: int32
+        error:
+          type: string
+        message:
+          type: string
+    ProblemDetail:
+      type: object
+      description: RFC 9457 problem details, returned when the client sends Accept application/problem+json.
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+          format: int32
+        detail:
+          type: string
+        instance:
+          type: string

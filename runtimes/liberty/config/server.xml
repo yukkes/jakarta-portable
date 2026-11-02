@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Open Liberty 26 configuration for the shared application.
+
+    Liberty specific and kept out of the app: the JDBC driver library and the dataSource,
+    plus the feature set the application needs.
+    Platform features (webProfile-11.0) are used instead of individual ones, so the
+    feature versions cannot drift apart.
+-->
+<server description="jakarta-portable on Open Liberty">
+
+    <featureManager>
+        <feature>webProfile-11.0</feature>
+        <!-- The app uses no MicroProfile API; the server's own /health is enough. -->
+        <feature>mpHealth-4.0</feature>
+        <feature>batch-2.1</feature>
+        <feature>jdbc-4.3</feature>
+    </featureManager>
+
+    <!-- Security headers for the *static* UI: SecurityHeadersFilter covers the JAX-RS
+         responses on every runtime, but static files never reach it. Liberty puts these on
+         the HTTP endpoint; the values mirror SecurityHeaders in the app module. -->
+    <httpEndpoint id="defaultHttpEndpoint" host="*" httpPort="8080" httpsPort="9443">
+        <headers>
+            <set>Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'</set>
+            <set>X-Content-Type-Options: nosniff</set>
+            <set>Referrer-Policy: no-referrer</set>
+        </headers>
+    </httpEndpoint>
+
+    <!--
+        Jakarta Batch checks the *container* identity, which this application does not use
+        for its own authentication (it has a JAX-RS filter with Bearer/cookie tokens). Grant
+        the batch administrator role to everyone, otherwise JobOperator.start() fails with
+        "User UNAUTHENTICATED is not authorized to start batch jobs" (CWWKY0304W).
+        If the app is ever moved onto container security, replace EVERYONE with the real role.
+    -->
+    <authorization-roles id="com.ibm.ws.batch">
+        <security-role name="batchAdmin">
+            <special-subject type="EVERYONE"/>
+        </security-role>
+    </authorization-roles>
+
+    <!-- The Dockerfile always copies the driver in as lib/postgresql.jar, so name the
+         file instead of matching a pattern: a fileset under ${server.config.dir} silently
+         resolves to no files on 26.0.0.10, which surfaces later as
+         "cannot locate the jdbc/appDB data source". -->
+    <library id="postgresLib">
+        <file name="${server.config.dir}/lib/postgresql.jar"/>
+    </library>
+
+    <!-- DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASSWORD come from the container environment. -->
+    <dataSource id="DefaultDataSource" jndiName="jdbc/appDB" type="javax.sql.DataSource" statementCacheSize="100">
+        <jdbcDriver libraryRef="postgresLib"/>
+        <properties.postgresql serverName="${DB_HOST}" portNumber="${DB_PORT}"
+                               databaseName="${DB_NAME}"
+                               user="${DB_USER}" password="${DB_PASSWORD}"/>
+        <connectionManager minPoolSize="10" maxPoolSize="50"/>
+    </dataSource>
+
+    <jpa defaultJtaDataSourceJndiName="jdbc/appDB"/>
+
+    <!-- contextRoot="/" so every runtime serves the same URLs (Quarkus and Payara Micro
+         already use "/"; the WAR archive name would give "/app" here). -->
+    <webApplication id="app" name="app" location="${server.config.dir}/apps/app.war" contextRoot="/">
+        <classloader commonLibraryRef="postgresLib"/>
+    </webApplication>
+
+</server>

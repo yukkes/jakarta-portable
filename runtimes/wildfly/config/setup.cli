@@ -1,0 +1,22 @@
+# Applied at image build time (see ../Dockerfile). The ${env.*} expressions are stored as they
+# are and resolved by the server from the container environment at start.
+#
+# The datasource *and* the static-file security headers are applied inside an embedded
+# server: undertow's response-header filters only exist at the runtime stage, so an
+# offline `--file` run of the CLI rejects them.
+embed-server --server-config=standalone.xml --std-out=discard
+
+module add --name=org.postgresql --resources=/tmp/setup/postgresql.jar --dependencies=java.sql,jakarta.transaction.api
+/subsystem=datasources/jdbc-driver=postgresql:add(driver-name=postgresql,driver-module-name=org.postgresql,driver-class-name=org.postgresql.Driver)
+/subsystem=datasources/data-source=AppDS:add(jndi-name=java:jboss/datasources/AppDS,driver-name=postgresql,connection-url="jdbc:postgresql://${env.DB_HOST}:${env.DB_PORT}/${env.DB_NAME}",user-name="${env.DB_USER}",password="${env.DB_PASSWORD}",min-pool-size=10,max-pool-size=50)
+/subsystem=ee/service=default-bindings:write-attribute(name=datasource,value=java:jboss/datasources/AppDS)
+
+# Security headers for static files (SecurityHeadersFilter covers the JAX-RS responses).
+/subsystem=undertow/configuration=filter/response-header=csp:add(header-name="Content-Security-Policy", header-value="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+/subsystem=undertow/configuration=filter/response-header=nosniff:add(header-name="X-Content-Type-Options", header-value="nosniff")
+/subsystem=undertow/configuration=filter/response-header=referrer:add(header-name="Referrer-Policy", header-value="no-referrer")
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=csp:add()
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=nosniff:add()
+/subsystem=undertow/server=default-server/host=default-host/filter-ref=referrer:add()
+
+stop-embedded-server

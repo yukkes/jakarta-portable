@@ -1,0 +1,10 @@
+# Run by the image on every start (see ../Dockerfile). One command per line: post-boot files
+# have no line continuation. ${ENV=...} is Payara's variable substitution, resolved from the
+# container environment when the pool connects.
+create-jdbc-connection-pool --datasourceclassname org.postgresql.ds.PGSimpleDataSource --restype javax.sql.DataSource --steadypoolsize 10 --maxpoolsize 50 --statementcachesize 100 AppPool
+set resources.jdbc-connection-pool.AppPool.property.serverName=${ENV=DB_HOST}
+set resources.jdbc-connection-pool.AppPool.property.portNumber=${ENV=DB_PORT}
+set resources.jdbc-connection-pool.AppPool.property.databaseName=${ENV=DB_NAME}
+set resources.jdbc-connection-pool.AppPool.property.user=${ENV=DB_USER}
+set resources.jdbc-connection-pool.AppPool.property.password=${ENV=DB_PASSWORD}
+set resources.jdbc-resource.jdbc/__default.pool-name=AppPool

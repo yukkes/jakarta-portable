@@ -1,0 +1,21 @@
+# Applied at image build time (see ../Dockerfile). ${DB_HOST} and friends are resolved from the
+# container environment when the pool connects.
+create-jdbc-connection-pool --datasourceclassname org.postgresql.ds.PGSimpleDataSource --restype javax.sql.DataSource --steadypoolsize 10 --maxpoolsize 50 --statementcachesize 100 AppPool
+set resources.jdbc-connection-pool.AppPool.property.serverName=${DB_HOST}
+set resources.jdbc-connection-pool.AppPool.property.portNumber=${DB_PORT}
+set resources.jdbc-connection-pool.AppPool.property.databaseName=${DB_NAME}
+set resources.jdbc-connection-pool.AppPool.property.user=${DB_USER}
+set resources.jdbc-connection-pool.AppPool.property.password=${DB_PASSWORD}
+set resources.jdbc-resource.jdbc/__default.pool-name=AppPool
+
+# The http-thread-pool ships empty, which leaves 5 HTTP workers (docs/performance.md). Max first:
+# min may not exceed it.
+set configs.config.server-config.thread-pools.thread-pool.http-thread-pool.max-thread-pool-size=200
+set configs.config.server-config.thread-pools.thread-pool.http-thread-pool.min-thread-pool-size=64
+set configs.config.server-config.thread-pools.thread-pool.http-thread-pool.max-queue-size=1000
+
+# EclipseLink: no shared L2 cache, JDBC statement cache on, no deploy-time weaving (most of the
+# deployment time here). Same settings as the Payara image.
+create-jvm-options -Declipselink.cache.shared.default=false
+create-jvm-options -Declipselink.jdbc.cache-statements=true
+create-jvm-options -Declipselink.weaving=false
